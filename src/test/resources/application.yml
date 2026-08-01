@@ -1,0 +1,30 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+# Disable scheduled outbox polling in tests; tests drive dispatch explicitly for determinism.
+basin:
+  outbox:
+    poll-ms: 3600000
+  decision:
+    thresholds:
+      rainfall3h-mm:
+        watch: 50
+        move-prepare: 80
+        move-now: 100
+      river-level-m:
+        watch: 4.0
+        move-prepare: 5.5
+        move-now: 6.0
+    upstream:
+      max-evidence-age-minutes: 30
+
+logging:
+  level:
+    org.testcontainers: info
+    com.github.dockerjava: warn
