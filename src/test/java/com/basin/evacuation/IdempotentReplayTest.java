@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.stream.IntStream;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * 并发重放幂等测试：创建快照、覆写、重算三类请求带相同业务请求号并发重放时，
@@ -49,6 +51,8 @@ class IdempotentReplayTest extends PostgresIntegrationTest {
     OutboxRepository outboxRepository;
     @Autowired
     MutableClock clock;
+    @Autowired
+    JdbcTemplate jdbcTemplate;
 
     @Test
     @Order(1)
@@ -119,6 +123,69 @@ class IdempotentReplayTest extends PostgresIntegrationTest {
 
     @Test
     @Order(3)
+    void atExactExpiry_concurrentReadsAndIdempotentRecomputes() throws Exception {
+        // 到期语义固定为 now >= expiresAt：把时钟卡在 override-17 恰好到期的一瞬
+        Instant expiresAt = overrideService.list(OLD_SNAPSHOT).get(0).getExpiresAt();
+        clock.set(expiresAt);
+
+        // 基线：第 2 轮新快照当前建议、历史通知清单
+        Decision newSnapshotBefore = decisionService.current(NEW_SNAPSHOT);
+        List<UUID> outboxIdsBefore = outboxRepository.findAll().stream().map(OutboxMessage::getId).toList();
+        long outboxCountBefore = outboxRepository.count();
+
+        int recomputes = 8;
+        int readers = 4;
+        List<Callable<Object>> tasks = new java.util.ArrayList<>();
+        IntStream.range(0, recomputes)
+                .forEach(i -> tasks.add(() -> decisionService.recompute(OLD_SNAPSHOT, "recompute-expiry-17")));
+        IntStream.range(0, readers)
+                .forEach(i -> tasks.add(() -> decisionService.current(OLD_SNAPSHOT)));
+
+        List<Object> results = runConcurrently(tasks, recomputes + readers);
+        List<Decision> recomputeResults = results.subList(0, recomputes).stream()
+                .map(Decision.class::cast).toList();
+        List<Decision> readResults = results.subList(recomputes, results.size()).stream()
+                .map(Decision.class::cast).toList();
+
+        // 恰好到期：并发读到的永远是 COMPUTED（旧覆写已失效），即旧快照自己的一级计算结果
+        assertThat(readResults).allSatisfy(d -> {
+            assertThat(d.getSource()).isEqualTo(DecisionSource.COMPUTED);
+            assertThat(d.getOutcome()).isEqualTo(DecisionOutcome.EVACUATE_NOW);
+            assertThat(d.getSnapshotId()).isEqualTo(OLD_SNAPSHOT);
+        });
+
+        // 8 次相同请求号重算：恰好生成 1 条新 COMPUTED 建议与 1 条 outbox
+        assertThat(recomputeResults.stream().map(Decision::getId))
+                .containsOnly(recomputeResults.get(0).getId());
+        Decision newComputed = recomputeResults.get(0);
+        assertThat(newComputed.getSource()).isEqualTo(DecisionSource.COMPUTED);
+        assertThat(newComputed.getRequestId()).isEqualTo("recompute-expiry-17");
+        List<Decision> history = decisionService.history(OLD_SNAPSHOT);
+        assertThat(history).hasSize(3); // 种子 seq1 + 覆写 seq2 + 本次重算 seq3
+        assertThat(newComputed.getSeq()).isEqualTo(3);
+        assertThat(outboxRepository.countByDecisionIdIn(List.of(newComputed.getId()))).isEqualTo(1);
+        assertThat(outboxRepository.count()).isEqualTo(outboxCountBefore + 1);
+
+        // 历史通知一条不少
+        List<UUID> outboxIdsAfter = outboxRepository.findAll().stream().map(OutboxMessage::getId).toList();
+        assertThat(outboxIdsAfter).containsAll(outboxIdsBefore);
+
+        // 旧覆写仍在，且不能被删除（DB 触发器强制）
+        assertThat(overrideService.list(OLD_SNAPSHOT)).hasSize(1);
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "DELETE FROM manual_override WHERE request_id = 'override-17'"))
+                .hasMessageContaining("immutable");
+
+        // 第 2 轮新快照的当前建议完全不受旧快照操作影响
+        Decision newSnapshotAfter = decisionService.current(NEW_SNAPSHOT);
+        assertThat(newSnapshotAfter.getId()).isEqualTo(newSnapshotBefore.getId());
+        assertThat(newSnapshotAfter.getOutcome()).isEqualTo(newSnapshotBefore.getOutcome());
+        assertThat(newSnapshotAfter.getSeq()).isEqualTo(newSnapshotBefore.getSeq());
+        assertThat(newSnapshotAfter.getSource()).isEqualTo(DecisionSource.COMPUTED);
+    }
+
+    @Test
+    @Order(4)
     void newSnapshotSeedUsesOwnEvidenceAndHistoriesAreIsolated() {
         RiskSnapshot s = snapshotService.get(NEW_SNAPSHOT);
         assertThat(s.getRainfall3hMm()).isEqualByComparingTo(new BigDecimal("164.00"));
@@ -163,7 +230,7 @@ class IdempotentReplayTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @Order(4)
+    @Order(5)
     void concurrentRecomputeWithSameRequestIdIsIdempotent() throws Exception {
         int threads = 6;
         List<Callable<Decision>> tasks = IntStream.range(0, threads)
@@ -185,7 +252,7 @@ class IdempotentReplayTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     void concurrentCreateSnapshotWithSameRequestIdIsIdempotent() throws Exception {
         String snapshotId = "t-idem-create-1";
         int threads = 6;

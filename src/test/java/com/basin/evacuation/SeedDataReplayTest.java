@@ -61,26 +61,32 @@ class SeedDataReplayTest extends PostgresIntegrationTest {
 
     @Test
     void seedDecisionIsLevel1AndReferencesEvidenceVersion() {
-        Decision current = decisionService.current(SEED_SNAPSHOT);
-        assertThat(current.getOutcome()).isEqualTo(DecisionOutcome.EVACUATE_NOW);
-        assertThat(current.getSource()).isEqualTo(DecisionSource.COMPUTED);
-        assertThat(current.getSeq()).isEqualTo(1);
-        assertThat(current.getSnapshotId()).isEqualTo(SEED_SNAPSHOT);
-        assertThat(current.getSnapshotVersion()).isEqualTo(1);
-        assertThat(current.getEvidence().snapshotVersion()).isEqualTo(1);
-        assertThat(current.getEvidence().vulnerablePopulation()).isEqualTo(286);
-        assertThat(current.getReasons()).contains(
+        // 种子建议按确定性 UUID 直接定位（其它测试类可能已追加了重算历史，不依赖 current 仍是 seq=1）
+        Decision seed = decisionService.get(java.util.UUID.fromString("a1000000-0000-4000-8000-000000000001"));
+        assertThat(seed.getOutcome()).isEqualTo(DecisionOutcome.EVACUATE_NOW);
+        assertThat(seed.getSource()).isEqualTo(DecisionSource.COMPUTED);
+        assertThat(seed.getSeq()).isEqualTo(1);
+        assertThat(seed.getSnapshotId()).isEqualTo(SEED_SNAPSHOT);
+        assertThat(seed.getSnapshotVersion()).isEqualTo(1);
+        assertThat(seed.getEvidence().snapshotVersion()).isEqualTo(1);
+        assertThat(seed.getEvidence().vulnerablePopulation()).isEqualTo(286);
+        assertThat(seed.getReasons()).contains(
                 "达到一级（立即转移）阈值：3小时累计降水118mm≥100mm且河道水位6.12m≥6m");
         // outbox 与决策一起被重放
-        long outboxCount = outboxRepository.countByDecisionIdIn(java.util.List.of(current.getId()));
+        long outboxCount = outboxRepository.countByDecisionIdIn(java.util.List.of(seed.getId()));
         assertThat(outboxCount).isEqualTo(1);
         var message = outboxRepository.findAll().stream()
-                .filter(m -> m.getDecisionId().equals(current.getId()))
+                .filter(m -> m.getDecisionId().equals(seed.getId()))
                 .findFirst().orElseThrow();
         // 投递状态可能被其它测试类的重放推进，这里只验证 outbox 与 payload 被完整重放
         assertThat(message.getPayload().get("snapshotId")).isEqualTo(SEED_SNAPSHOT);
         assertThat(message.getPayload().get("outcome")).isEqualTo("EVACUATE_NOW");
         assertThat(message.getPayload().get("vulnerablePopulation")).isEqualTo(286);
+
+        // 旧快照当前建议始终是 COMPUTED 的一级·立即转移（有效覆写不存在时）
+        Decision current = decisionService.current(SEED_SNAPSHOT);
+        assertThat(current.getOutcome()).isEqualTo(DecisionOutcome.EVACUATE_NOW);
+        assertThat(current.getSource()).isEqualTo(DecisionSource.COMPUTED);
     }
 
     @Test
