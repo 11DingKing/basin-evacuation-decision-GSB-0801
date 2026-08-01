@@ -1,0 +1,10 @@
+app:
+  notification:
+    outbox:
+      relay-interval-ms: 86400000
+      batch-size: 500
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
