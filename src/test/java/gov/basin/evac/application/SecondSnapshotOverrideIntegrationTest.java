@@ -208,4 +208,90 @@ class SecondSnapshotOverrideIntegrationTest {
         assertThat(payload).contains("RAINFALL=20260729T0300"); // upstream versions
         assertThat(payload).contains("请求号override-17");    // request id
     }
+
+    /**
+     * At the exact expiry instant of override-17 (expiry semantics fixed to {@code now >= expiresAt}),
+     * eight threads read the OLD snapshot's current advisory and recompute concurrently under the
+     * reconciliation tag {@code recompute-expiry-17}. The override is already inactive, so every
+     * retry must converge on exactly ONE new COMPUTED advisory and ONE outbox record — never a
+     * duplicate. Meanwhile the second snapshot's current advisory is unchanged, and neither the
+     * expired override nor any historical notification is deleted.
+     */
+    @Test
+    void concurrentRecomputeAtExactExpiryProducesSingleComputedAdvisoryAndOutbox() throws Exception {
+        // Establish baselines for both snapshots at 06:05 while both are fresh.
+        recomputeService.recompute(OLD_SNAPSHOT);
+        recomputeService.recompute(NEW_SNAPSHOT);
+
+        // Create override-17 on the OLD snapshot with a 10-minute window (well within freshness),
+        // active from 06:05 to 06:15.
+        Instant from = clock.instant();
+        Instant expiry = from.plus(Duration.ofMinutes(10));
+        overrideService.createOverride(OLD_SNAPSHOT, DecisionLevel.WATCH, "值班员吴十",
+                "到期前降级观察", from, expiry, "override-17");
+
+        // While the override is active, the OLD snapshot reflects it.
+        Advisory duringOverride = advisoryRepository
+                .findFirstBySnapshotIdAndSupersededFalseOrderByComputedAtDesc(OLD_SNAPSHOT).orElseThrow();
+        assertThat(duringOverride.getSource()).isEqualTo(AdvisorySource.OVERRIDE);
+
+        // Capture NEW snapshot's current advisory and count historical notifications before round 2.
+        Advisory newBefore = advisoryRepository
+                .findFirstBySnapshotIdAndSupersededFalseOrderByComputedAtDesc(NEW_SNAPSHOT).orElseThrow();
+        long outboxBefore = outboxRepository.count();
+        Long expiredOverrideId = overrideRepository.findByRequestId("override-17").orElseThrow().getId();
+
+        // Freeze the clock EXACTLY at expiry: now == expiresAt => override inactive (now >= expiresAt).
+        clock.setInstant(expiry);
+        assertThat(overrideRepository.findByRequestId("override-17").orElseThrow().isActiveAt(expiry))
+                .as("override must be inactive at the exact expiry instant (now >= expiresAt)")
+                .isFalse();
+
+        // Round 2: eight threads read the current advisory then recompute the OLD snapshot at once.
+        int threads = 8;
+        CyclicBarrier barrier = new CyclicBarrier(threads);
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            List<Callable<Advisory>> tasks = java.util.Collections.nCopies(threads, () -> {
+                barrier.await(); // maximise contention at the boundary
+                advisoryRepository.findFirstBySnapshotIdAndSupersededFalseOrderByComputedAtDesc(OLD_SNAPSHOT);
+                return recomputeService.recompute(OLD_SNAPSHOT);
+            });
+            for (Future<Advisory> f : pool.invokeAll(tasks)) {
+                f.get(); // propagate any failure
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        // Exactly one current advisory for OLD, now COMPUTED (auto-reverted from the expired override).
+        List<Advisory> oldHistory = advisoryRepository.findBySnapshotIdOrderByComputedAtDesc(OLD_SNAPSHOT);
+        List<Advisory> oldCurrent = oldHistory.stream().filter(a -> !a.isSuperseded()).toList();
+        assertThat(oldCurrent).hasSize(1);
+        assertThat(oldCurrent.get(0).getSource()).isEqualTo(AdvisorySource.COMPUTED);
+
+        // Only ONE new COMPUTED advisory was created after the override, despite 8 concurrent retries.
+        long computedAfterOverride = oldHistory.stream()
+                .filter(a -> a.getSource() == AdvisorySource.COMPUTED)
+                .filter(a -> !a.getComputedAt().isBefore(expiry))
+                .count();
+        assertThat(computedAfterOverride).isEqualTo(1L);
+
+        // And exactly ONE new outbox record was enqueued in round 2.
+        assertThat(outboxRepository.count() - outboxBefore).isEqualTo(1L);
+
+        // The second snapshot's current advisory is unchanged.
+        Advisory newAfter = advisoryRepository
+                .findFirstBySnapshotIdAndSupersededFalseOrderByComputedAtDesc(NEW_SNAPSHOT).orElseThrow();
+        assertThat(newAfter.getId()).isEqualTo(newBefore.getId());
+        assertThat(newAfter.isSuperseded()).isFalse();
+
+        // The expired override and all historical notifications are preserved (never deleted).
+        assertThat(overrideRepository.findByRequestId("override-17"))
+                .get().extracting(ManualOverride::getId).isEqualTo(expiredOverrideId);
+        assertThat(outboxRepository.count()).isGreaterThanOrEqualTo(outboxBefore);
+        assertThat(oldHistory.stream().anyMatch(a -> a.getSource() == AdvisorySource.OVERRIDE))
+                .as("the override-sourced advisory history is retained")
+                .isTrue();
+    }
 }
