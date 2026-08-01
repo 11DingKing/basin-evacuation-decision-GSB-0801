@@ -1,0 +1,53 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.4'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.basin'
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:postgresql'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    // Testcontainers 需要能稳定找到 Docker 守护进程（/var/run/docker.sock 为系统级软链；
+    // 若你的环境不同，设置 DOCKER_HOST 环境变量后运行 gradle test 即可，此处值会被继承）
+    if (System.getenv('DOCKER_HOST') == null) {
+        environment 'DOCKER_HOST', 'unix:///var/run/docker.sock'
+    }
+    // OrbStack/新版 Docker 要求 API >= 1.40，而 docker-java 默认 1.32。
+    // 系统属性 api.version（docker-java 读取）与环境变量 DOCKER_API_VERSION 双管齐下；
+    // 已在 shell 中设置过 DOCKER_API_VERSION 时会优先沿用。
+    systemProperty 'api.version', System.getenv('DOCKER_API_VERSION') ?: '1.44'
+    environment 'DOCKER_API_VERSION', System.getenv('DOCKER_API_VERSION') ?: '1.44'
+    testLogging {
+        events 'PASSED', 'FAILED', 'SKIPPED'
+        showStandardStreams = false
+    }
+}
