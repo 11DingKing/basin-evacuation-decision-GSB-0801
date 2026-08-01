@@ -45,7 +45,7 @@ class DegradedUpstreamTest extends PostgresIntegrationTest {
         snapshotService.create(snapshotId, "510182", 1,
                 null, null, // 降雨、水位上游超时：本次无数据
                 HazardPointStatus.WARNING, RoadStatus.OPEN, RoadStatus.OPEN,
-                12, health, Instant.parse("2026-08-01T02:30:00Z"));
+                12, health, Instant.parse("2026-08-01T02:30:00Z"), null);
 
         Decision current = decisionService.current(snapshotId);
         // 数据不足与低风险是两种完全不同的结果

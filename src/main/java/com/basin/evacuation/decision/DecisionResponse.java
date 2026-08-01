@@ -15,6 +15,7 @@ public record DecisionResponse(
         int priority,
         DecisionSource source,
         UUID overrideId,
+        String requestId,
         List<String> reasons,
         DecisionEvidence evidence,
         Instant createdAt) {
@@ -23,6 +24,6 @@ public record DecisionResponse(
         return new DecisionResponse(
                 d.getId(), d.getSnapshotId(), d.getSnapshotVersion(), d.getRegionCode(), d.getSeq(),
                 d.getOutcome(), d.getOutcome().label(), d.getOutcome().priority(),
-                d.getSource(), d.getOverrideId(), d.getReasons(), d.getEvidence(), d.getCreatedAt());
+                d.getSource(), d.getOverrideId(), d.getRequestId(), d.getReasons(), d.getEvidence(), d.getCreatedAt());
     }
 }

@@ -3,8 +3,11 @@ package com.basin.evacuation;
 import com.basin.evacuation.snapshot.UpstreamHealth;
 import com.basin.evacuation.snapshot.UpstreamKind;
 import com.basin.evacuation.snapshot.UpstreamStatus;
+import java.time.Instant;
 import java.util.EnumMap;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -29,6 +32,15 @@ public abstract class PostgresIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+    }
+
+    @Autowired
+    private MutableClock clock;
+
+    /** 每个用例开始前把共享时钟拨回真实时间，避免测试类之间互相污染 */
+    @BeforeEach
+    void resetClock() {
+        clock.set(Instant.now());
     }
 
     protected static Map<UpstreamKind, UpstreamHealth> allOkUpstream() {

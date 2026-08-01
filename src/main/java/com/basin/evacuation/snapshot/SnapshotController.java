@@ -47,7 +47,8 @@ public class SnapshotController {
             @NotNull RoadStatus secondaryRoadStatus,
             @Min(0) int vulnerablePopulation,
             @NotEmpty Map<UpstreamKind, UpstreamHealth> upstreamHealth,
-            @NotNull Instant observedAt) {}
+            @NotNull Instant observedAt,
+            String requestId) {}
 
     public record SnapshotResponse(
             String snapshotId, String regionCode, int version,
@@ -67,14 +68,16 @@ public class SnapshotController {
     }
 
     @PostMapping
-    @Operation(summary = "创建快照", description = "同事务生成首条计算建议与通知 outbox；snapshotId 已存在返回 409")
+    @Operation(summary = "创建快照", description = "同事务生成首条计算建议与通知 outbox；requestId 为幂等依据：相同请求号重放返回既有快照（200），无请求号的重复创建返回 409")
     public ResponseEntity<SnapshotResponse> create(@Valid @RequestBody CreateSnapshotRequest request) {
-        RiskSnapshot s = snapshots.create(
+        var result = snapshots.create(
                 request.snapshotId(), request.regionCode(), request.version(),
                 request.rainfall3hMm(), request.waterLevelM(),
                 request.hazardPointStatus(), request.primaryRoadStatus(), request.secondaryRoadStatus(),
-                request.vulnerablePopulation(), request.upstreamHealth(), request.observedAt());
-        return ResponseEntity.status(HttpStatus.CREATED).body(SnapshotResponse.from(s));
+                request.vulnerablePopulation(), request.upstreamHealth(), request.observedAt(),
+                request.requestId());
+        return ResponseEntity.status(result.replayed() ? HttpStatus.OK : HttpStatus.CREATED)
+                .body(SnapshotResponse.from(result.snapshot()));
     }
 
     @GetMapping("/{snapshotId}")
@@ -90,9 +93,10 @@ public class SnapshotController {
     }
 
     @PostMapping("/{snapshotId}/recompute")
-    @Operation(summary = "重算", description = "对同一快照并发安全地追加一条新的计算建议（行锁 + seq 唯一约束）")
-    public DecisionResponse recompute(@PathVariable String snapshotId) {
-        return DecisionResponse.from(snapshots.recompute(snapshotId));
+    @Operation(summary = "重算", description = "对同一快照并发安全地追加一条新的计算建议（行锁 + seq 唯一约束）；带 requestId 时相同请求号幂等，只生成一条建议与一条通知")
+    public DecisionResponse recompute(@PathVariable String snapshotId,
+                                      @RequestParam(required = false) String requestId) {
+        return DecisionResponse.from(snapshots.recompute(snapshotId, requestId));
     }
 
     @GetMapping("/{snapshotId}/decisions")

@@ -50,6 +50,10 @@ public class Decision {
     @Column(name = "override_id", updatable = false)
     private UUID overrideId;
 
+    /** 业务请求号（幂等依据）：相同请求号只产生一条建议；历史种子数据可为 null */
+    @Column(name = "request_id", length = 64, updatable = false)
+    private String requestId;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "reasons", nullable = false, columnDefinition = "jsonb", updatable = false)
     private List<String> reasons;
@@ -64,7 +68,7 @@ public class Decision {
     protected Decision() {}
 
     public Decision(UUID id, String snapshotId, int snapshotVersion, String regionCode, int seq,
-                    DecisionOutcome outcome, DecisionSource source, UUID overrideId,
+                    DecisionOutcome outcome, DecisionSource source, UUID overrideId, String requestId,
                     List<String> reasons, DecisionEvidence evidence, Instant createdAt) {
         this.id = id;
         this.snapshotId = snapshotId;
@@ -74,6 +78,7 @@ public class Decision {
         this.outcome = outcome;
         this.source = source;
         this.overrideId = overrideId;
+        this.requestId = requestId;
         this.reasons = List.copyOf(reasons);
         this.evidence = evidence;
         this.createdAt = createdAt;
@@ -109,6 +114,10 @@ public class Decision {
 
     public UUID getOverrideId() {
         return overrideId;
+    }
+
+    public String getRequestId() {
+        return requestId;
     }
 
     public List<String> getReasons() {

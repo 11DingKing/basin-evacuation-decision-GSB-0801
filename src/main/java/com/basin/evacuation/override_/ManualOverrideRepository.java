@@ -12,5 +12,7 @@ public interface ManualOverrideRepository extends JpaRepository<ManualOverride, 
     Optional<ManualOverride> findFirstBySnapshotIdAndExpiresAtGreaterThanOrderByCreatedAtDesc(
             String snapshotId, Instant now);
 
+    Optional<ManualOverride> findByRequestId(String requestId);
+
     List<ManualOverride> findBySnapshotIdOrderByCreatedAtDesc(String snapshotId);
 }

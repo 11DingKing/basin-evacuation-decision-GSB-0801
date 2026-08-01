@@ -31,25 +31,26 @@ public class OverrideController {
     }
 
     public record CreateOverrideRequest(
+            @NotBlank String requestId,
             @NotNull DecisionOutcome outcome,
             @NotBlank String operator,
             @NotBlank String reason,
             @NotNull Instant expiresAt) {}
 
     public record OverrideResponse(
-            UUID id, String snapshotId, DecisionOutcome outcome,
+            UUID id, String snapshotId, String requestId, DecisionOutcome outcome,
             String operator, String reason, Instant createdAt, Instant expiresAt) {
         static OverrideResponse from(ManualOverride o) {
-            return new OverrideResponse(o.getId(), o.getSnapshotId(), o.getOutcome(),
+            return new OverrideResponse(o.getId(), o.getSnapshotId(), o.getRequestId(), o.getOutcome(),
                     o.getOperator(), o.getReason(), o.getCreatedAt(), o.getExpiresAt());
         }
     }
 
     @PostMapping
-    @Operation(summary = "创建覆写", description = "同事务追加一条 source=OVERRIDE 的建议并写 outbox；历史建议保留")
+    @Operation(summary = "创建覆写", description = "requestId 为幂等依据：相同请求号且内容一致返回已有建议（不新增覆写/建议/outbox），内容不一致返回 409；同事务追加 source=OVERRIDE 建议并写 outbox")
     public ResponseEntity<DecisionResponse> create(@PathVariable String snapshotId,
                                                    @Valid @RequestBody CreateOverrideRequest request) {
-        var decision = service.recordOverride(snapshotId, request.outcome(),
+        var decision = service.recordOverride(snapshotId, request.requestId(), request.outcome(),
                 request.operator(), request.reason(), request.expiresAt());
         return ResponseEntity.status(HttpStatus.CREATED).body(DecisionResponse.from(decision));
     }

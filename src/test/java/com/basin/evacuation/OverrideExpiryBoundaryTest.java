@@ -39,7 +39,7 @@ class OverrideExpiryBoundaryTest extends PostgresIntegrationTest {
         snapshotService.create(snapshotId, "510182", 1,
                 new BigDecimal("10.00"), new BigDecimal("4.500"),
                 HazardPointStatus.OK, RoadStatus.OPEN, RoadStatus.OPEN,
-                0, allOkUpstream(), base);
+                0, allOkUpstream(), base, null);
 
         // 初始为计算结果：低风险
         Decision before = decisionService.current(snapshotId);
@@ -47,7 +47,7 @@ class OverrideExpiryBoundaryTest extends PostgresIntegrationTest {
         assertThat(before.getSource()).isEqualTo(DecisionSource.COMPUTED);
 
         Instant expiresAt = base.plusSeconds(3600);
-        overrideService.recordOverride(snapshotId, DecisionOutcome.EVACUATE_NOW,
+        overrideService.recordOverride(snapshotId, "ov-boundary-1", DecisionOutcome.EVACUATE_NOW,
                 "值班员张三", "上游来水突增，提前组织转移", expiresAt);
 
         // 生效前一毫秒：覆写生效

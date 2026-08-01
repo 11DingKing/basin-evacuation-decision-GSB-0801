@@ -95,6 +95,7 @@ class ApiSmokeTest extends PostgresIntegrationTest {
 
         String override = """
                 {
+                  "requestId": "api-override-1",
                   "outcome": "PRE_TRANSFER",
                   "operator": "值班员李四",
                   "reason": "现场巡查发现新增裂缝",
@@ -111,9 +112,16 @@ class ApiSmokeTest extends PostgresIntegrationTest {
                 .andExpect(jsonPath("$.outcome").value("PRE_TRANSFER"))
                 .andExpect(jsonPath("$.source").value("OVERRIDE"));
 
+        // 相同请求号 + 相同内容 -> 幂等重放，返回同一条建议，不新增覆写
+        mvc.perform(post("/api/v1/snapshots/api-smoke-1/overrides")
+                        .contentType(MediaType.APPLICATION_JSON).content(override))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.requestId").value("api-override-1"));
+
         // 缺少操作者 -> 400
         String invalidOverride = """
                 {
+                  "requestId": "api-override-2",
                   "outcome": "PRE_TRANSFER",
                   "reason": "没有理由也要写",
                   "expiresAt": "%s"

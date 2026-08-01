@@ -33,22 +33,35 @@ public class SnapshotService {
         this.clock = clock;
     }
 
+    /** replayed=true 表示相同请求号的幂等重放，返回的是既有快照 */
+    public record CreateSnapshotResult(RiskSnapshot snapshot, boolean replayed) {}
+
     /**
      * 创建不可变快照，并在同一事务内完成首次阈值评估（建议 + outbox 一起落库）。
+     *
+     * 幂等：持行政区行锁串行化并发创建；快照已存在时，
+     * 若 requestId 与该快照某条建议的请求号一致则视为重放并返回既有快照（replayed=true），
+     * 否则抛出 409。相同请求号永远只产生一条建议与一条通知。
      */
     @Transactional
-    public RiskSnapshot create(String snapshotId, String regionCode, Integer version,
-                               BigDecimal rainfall3hMm, BigDecimal waterLevelM,
-                               HazardPointStatus hazardPointStatus,
-                               RoadStatus primaryRoadStatus, RoadStatus secondaryRoadStatus,
-                               int vulnerablePopulation,
-                               Map<UpstreamKind, UpstreamHealth> upstreamHealth,
-                               Instant observedAt) {
-        if (snapshots.existsById(snapshotId)) {
+    public CreateSnapshotResult create(String snapshotId, String regionCode, Integer version,
+                                       BigDecimal rainfall3hMm, BigDecimal waterLevelM,
+                                       HazardPointStatus hazardPointStatus,
+                                       RoadStatus primaryRoadStatus, RoadStatus secondaryRoadStatus,
+                                       int vulnerablePopulation,
+                                       Map<UpstreamKind, UpstreamHealth> upstreamHealth,
+                                       Instant observedAt, String requestId) {
+        regions.lockByCode(regionCode)
+                .orElseThrow(() -> new BadRequestException("行政区不存在: " + regionCode));
+        var existing = snapshots.findById(snapshotId);
+        if (existing.isPresent()) {
+            if (requestId != null && !requestId.isBlank()
+                    && decisionService.findByRequestId(requestId.strip())
+                        .filter(d -> d.getSnapshotId().equals(snapshotId))
+                        .isPresent()) {
+                return new CreateSnapshotResult(existing.get(), true);
+            }
             throw new ConflictException("快照已存在（不可变，不允许覆盖）: " + snapshotId);
-        }
-        if (!regions.existsById(regionCode)) {
-            throw new BadRequestException("行政区不存在: " + regionCode);
         }
         RiskSnapshot snapshot = new RiskSnapshot(
                 snapshotId, regionCode, version == null ? 1 : version,
@@ -56,8 +69,8 @@ public class SnapshotService {
                 hazardPointStatus, primaryRoadStatus, secondaryRoadStatus,
                 vulnerablePopulation, upstreamHealth, observedAt, Instant.now(clock));
         snapshots.save(snapshot);
-        decisionService.computeAndRecord(snapshotId);
-        return snapshot;
+        decisionService.computeAndRecord(snapshotId, requestId);
+        return new CreateSnapshotResult(snapshot, false);
     }
 
     @Transactional(readOnly = true)
@@ -75,7 +88,7 @@ public class SnapshotService {
     }
 
     @Transactional
-    public Decision recompute(String snapshotId) {
-        return decisionService.recompute(snapshotId);
+    public Decision recompute(String snapshotId, String requestId) {
+        return decisionService.recompute(snapshotId, requestId);
     }
 }

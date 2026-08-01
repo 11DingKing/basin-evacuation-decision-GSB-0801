@@ -17,5 +17,7 @@ public interface DecisionRepository extends JpaRepository<Decision, UUID>, JpaSp
 
     Optional<Decision> findByOverrideId(UUID overrideId);
 
+    Optional<Decision> findByRequestId(String requestId);
+
     List<Decision> findBySnapshotIdOrderBySeqDesc(String snapshotId);
 }

@@ -26,6 +26,10 @@ public class ManualOverride {
     @Column(name = "snapshot_id", nullable = false, length = 64, updatable = false)
     private String snapshotId;
 
+    /** 业务请求号（幂等依据）：相同请求号的重试返回同一条覆写，不再生成新记录 */
+    @Column(name = "request_id", length = 64, updatable = false)
+    private String requestId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "outcome", nullable = false, length = 32, updatable = false)
     private DecisionOutcome outcome;
@@ -44,10 +48,11 @@ public class ManualOverride {
 
     protected ManualOverride() {}
 
-    public ManualOverride(UUID id, String snapshotId, DecisionOutcome outcome,
+    public ManualOverride(UUID id, String snapshotId, String requestId, DecisionOutcome outcome,
                           String operator, String reason, Instant createdAt, Instant expiresAt) {
         this.id = id;
         this.snapshotId = snapshotId;
+        this.requestId = requestId;
         this.outcome = outcome;
         this.operator = operator;
         this.reason = reason;
@@ -65,6 +70,10 @@ public class ManualOverride {
 
     public String getSnapshotId() {
         return snapshotId;
+    }
+
+    public String getRequestId() {
+        return requestId;
     }
 
     public DecisionOutcome getOutcome() {

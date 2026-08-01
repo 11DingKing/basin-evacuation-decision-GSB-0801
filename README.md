@@ -71,11 +71,28 @@ java -jar build/libs/basin-evacuation-decision-1.0.0.jar --server.port=8081
 | GET | `/api/v1/notifications?status=` | outbox 检索 |
 | POST | `/api/v1/notifications/dispatch?limit=` | 投递/重放 PENDING 与 FAILED |
 
-## 初始数据（V2 迁移）
+## 初始数据（V2/V3 迁移）
 
-`snapshot_id=sc-510182-20260729T0300`，地区 510182（四川省成都市彭州市）：
-3h 降水 118mm、水位 6.12m、隐患点 WARNING、主路 CLOSED、次路 UNKNOWN、脆弱人群 286 人，
-四类上游健康状态均为 OK 并带版本号；同时生成 seq=1 的一级·立即转移建议与一条 PENDING 通知。
+- `snapshot_id=sc-510182-20260729T0300`（V2），地区 510182（四川省成都市彭州市）：
+  3h 降水 118mm、水位 6.12m、隐患点 WARNING、主路 CLOSED、次路 UNKNOWN、脆弱人群 286 人，
+  四类上游健康状态均为 OK（版本批次 20260729T0300）；seq=1 一级·立即转移建议 + PENDING 通知。
+- `snapshot_id=sc-510182-20260729T0600`（V3），同一地区：
+  3h 降水 164mm、水位 6.18m、隐患点 WARNING、主路 OPEN、次路 UNKNOWN、脆弱人群 286 人，
+  上游版本批次 20260729T0600；seq=1 一级·立即转移建议 + PENDING 通知（请求号 `seed-sc-510182-20260729T0600`）。
+
+## 幂等（业务请求号）
+
+创建快照（body `requestId`）、人工覆写（body `requestId`，必填）、重算（query `requestId`）
+都接受业务请求号作为幂等依据：
+
+- `decision.request_id` 与 `manual_override.request_id` 上有部分唯一索引；
+- 写路径先持行锁（快照创建锁行政区分行，覆写/重算锁快照行），再按请求号查重 ——
+  相同请求号的并发重放/重试返回既有建议，**不会生成新的 UUID、建议或 outbox**；
+- 相同请求号但内容不一致：覆写返回 409；请求号被其它快照占用也返回 409；
+- 快照创建时相同请求号重放返回 200（非 201），无请求号的重复创建返回 409。
+
+每条通知 payload 都写明 `snapshotId`、`snapshotVersion`、四类上游版本（`upstreamVersions`）
+与产生它的请求号（`requestId`）。
 
 ## 一致性保证
 

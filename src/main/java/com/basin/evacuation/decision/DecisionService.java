@@ -1,5 +1,6 @@
 package com.basin.evacuation.decision;
 
+import com.basin.evacuation.common.ConflictException;
 import com.basin.evacuation.common.NotFoundException;
 import com.basin.evacuation.notification.NotificationService;
 import com.basin.evacuation.override_.ManualOverrideRepository;
@@ -48,16 +49,28 @@ public class DecisionService {
     /**
      * 计算并追加一条 COMPUTED 建议（同一事务内同时写 outbox）。
      * 快照行悲观锁串行化并发重算；(snapshot_id, seq) 唯一约束兜底。
+     * requestId 为幂等依据：持锁期间先查重，相同请求号直接返回已有建议，
+     * 并发重放/重试不会产生新 UUID、新建议或新 outbox。
      */
     @Transactional
-    public Decision computeAndRecord(String snapshotId) {
+    public Decision computeAndRecord(String snapshotId, String requestId) {
         RiskSnapshot snapshot = snapshots.lockBySnapshotId(snapshotId)
                 .orElseThrow(() -> new NotFoundException("快照不存在: " + snapshotId));
+        if (requestId != null && !requestId.isBlank()) {
+            var existing = decisions.findByRequestId(requestId.strip());
+            if (existing.isPresent()) {
+                Decision d = existing.get();
+                if (!d.getSnapshotId().equals(snapshotId)) {
+                    throw new ConflictException("请求号已被其它快照使用: " + requestId);
+                }
+                return d;
+            }
+        }
         EvaluationResult result = evaluator.evaluate(snapshot);
         int seq = decisions.findMaxSeq(snapshotId).orElse(0) + 1;
         Decision decision = new Decision(
                 UUID.randomUUID(), snapshotId, snapshot.getVersion(), snapshot.getRegionCode(), seq,
-                result.outcome(), DecisionSource.COMPUTED, null,
+                result.outcome(), DecisionSource.COMPUTED, null, normalize(requestId),
                 result.reasons(), DecisionEvidence.from(snapshot), Instant.now(clock));
         decisions.save(decision);
         notifications.enqueue(decision, snapshot);
@@ -66,7 +79,16 @@ public class DecisionService {
 
     @Transactional
     public Decision recompute(String snapshotId) {
-        return computeAndRecord(snapshotId);
+        return computeAndRecord(snapshotId, null);
+    }
+
+    @Transactional
+    public Decision recompute(String snapshotId, String requestId) {
+        return computeAndRecord(snapshotId, requestId);
+    }
+
+    private static String normalize(String requestId) {
+        return requestId == null || requestId.isBlank() ? null : requestId.strip();
     }
 
     /**
@@ -90,6 +112,11 @@ public class DecisionService {
     public Decision get(UUID id) {
         return decisions.findById(id)
                 .orElseThrow(() -> new NotFoundException("建议不存在: " + id));
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<Decision> findByRequestId(String requestId) {
+        return decisions.findByRequestId(requestId);
     }
 
     @Transactional(readOnly = true)

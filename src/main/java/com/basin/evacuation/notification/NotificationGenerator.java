@@ -27,6 +27,13 @@ public class NotificationGenerator {
         payload.put("outcome", d.getOutcome().name());
         payload.put("regionCode", s.getRegionCode());
         payload.put("vulnerablePopulation", s.getVulnerablePopulation());
+        // 产生这条通知的业务请求号（幂等依据），种子/无请求号数据为 null
+        payload.put("requestId", d.getRequestId());
+        // 四类上游数据版本
+        Map<String, String> upstreamVersions = new LinkedHashMap<>();
+        s.getUpstreamHealth().forEach((kind, health) ->
+                upstreamVersions.put(kind.name(), health == null ? null : health.version()));
+        payload.put("upstreamVersions", upstreamVersions);
         return new OutboxMessage(UUID.randomUUID(), d.getId(), CHANNEL_DUTY_BROADCAST, payload, createdAt);
     }
 }

@@ -37,7 +37,7 @@ class ConcurrentRecomputeTest extends PostgresIntegrationTest {
         snapshotService.create(snapshotId, "510182", 1,
                 new BigDecimal("118.00"), new BigDecimal("6.120"),
                 HazardPointStatus.WARNING, RoadStatus.CLOSED, RoadStatus.UNKNOWN,
-                286, allOkUpstream(), Instant.parse("2026-08-01T01:00:00Z"));
+                286, allOkUpstream(), Instant.parse("2026-08-01T01:00:00Z"), null);
 
         int threads = 8;
         List<Callable<Decision>> tasks = IntStream.range(0, threads)

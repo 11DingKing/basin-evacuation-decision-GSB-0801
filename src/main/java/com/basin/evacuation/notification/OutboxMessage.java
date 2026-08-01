@@ -56,7 +56,8 @@ public class OutboxMessage {
         this.id = id;
         this.decisionId = decisionId;
         this.channel = channel;
-        this.payload = Map.copyOf(payload);
+        // 允许 null 值（如无业务请求号时的 requestId），Map.copyOf 会拒绝 null
+        this.payload = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(payload));
         this.status = OutboxStatus.PENDING;
         this.attempts = 0;
         this.createdAt = createdAt;

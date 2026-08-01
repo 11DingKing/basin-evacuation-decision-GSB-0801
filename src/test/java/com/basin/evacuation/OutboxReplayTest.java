@@ -47,7 +47,7 @@ class OutboxReplayTest extends PostgresIntegrationTest {
         snapshotService.create(snapshotId, "510182", 1,
                 new BigDecimal("60.00"), new BigDecimal("5.600"),
                 HazardPointStatus.WARNING, RoadStatus.OPEN, RoadStatus.OPEN,
-                42, allOkUpstream(), Instant.parse("2026-08-01T01:30:00Z"));
+                42, allOkUpstream(), Instant.parse("2026-08-01T01:30:00Z"), null);
 
         Decision decision = decisionService.current(snapshotId);
         assertThat(decision.getOutcome().name()).isEqualTo("PRE_TRANSFER");
