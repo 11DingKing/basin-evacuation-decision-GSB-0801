@@ -47,11 +47,17 @@ public class ManualOverride {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
+    // Business request number. Optional, but when present it is globally unique (enforced by a
+    // partial unique index in V4) so that replaying the same request is idempotent.
+    @Column(name = "request_id", length = 64, updatable = false)
+    private String requestId;
+
     protected ManualOverride() {
     }
 
     public ManualOverride(String snapshotId, String regionCode, DecisionLevel forcedLevel,
-                          String operator, String reason, Instant effectiveFrom, Instant expiresAt) {
+                          String operator, String reason, Instant effectiveFrom, Instant expiresAt,
+                          String requestId) {
         this.snapshotId = snapshotId;
         this.regionCode = regionCode;
         this.forcedLevel = forcedLevel;
@@ -59,6 +65,7 @@ public class ManualOverride {
         this.reason = reason;
         this.effectiveFrom = effectiveFrom;
         this.expiresAt = expiresAt;
+        this.requestId = requestId;
     }
 
     /**
@@ -103,5 +110,9 @@ public class ManualOverride {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public String getRequestId() {
+        return requestId;
     }
 }

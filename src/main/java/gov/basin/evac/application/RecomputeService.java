@@ -94,17 +94,20 @@ public class RecomputeService {
         AdvisorySource source;
         Long overrideId;
         String rationale;
+        String requestId;
         if (active.isPresent()) {
             ManualOverride ov = active.get();
             level = ov.getForcedLevel();
             source = AdvisorySource.OVERRIDE;
             overrideId = ov.getId();
+            requestId = ov.getRequestId();
             rationale = String.format("人工覆写生效：操作者=%s，理由=%s，有效期至%s。被覆盖的计算结果为%s（%s）。",
                     ov.getOperator(), ov.getReason(), ov.getExpiresAt(), computed.level(), computed.rationale());
         } else {
             level = computed.level();
             source = AdvisorySource.COMPUTED;
             overrideId = null;
+            requestId = null;
             rationale = computed.rationale();
         }
 
@@ -124,7 +127,7 @@ public class RecomputeService {
                 level, source, overrideId, rationale, computed.affectedPersons(), now);
         advisory = advisoryRepository.saveAndFlush(advisory);
 
-        String payload = notificationComposer.compose(advisory);
+        String payload = notificationComposer.compose(advisory, snapshot, requestId);
         outboxRepository.save(new NotificationOutbox(
                 advisory.getId(), snapshotId, evidenceVersion, payload));
 

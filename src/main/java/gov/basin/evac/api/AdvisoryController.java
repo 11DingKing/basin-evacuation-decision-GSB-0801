@@ -103,7 +103,7 @@ public class AdvisoryController {
             @Valid @RequestBody CreateOverrideRequest request) {
         ManualOverride override = overrideService.createOverride(
                 snapshotId, request.forcedLevel(), request.operator(), request.reason(),
-                request.effectiveFrom(), request.expiresAt());
+                request.effectiveFrom(), request.expiresAt(), request.requestId());
         return ResponseEntity.status(HttpStatus.CREATED).body(OverrideResponse.from(override));
     }
 

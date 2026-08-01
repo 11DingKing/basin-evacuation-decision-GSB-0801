@@ -13,4 +13,7 @@ public interface ManualOverrideRepository extends JpaRepository<ManualOverride, 
     List<ManualOverride> findBySnapshotIdOrderByEffectiveFromDesc(String snapshotId);
 
     Optional<ManualOverride> findFirstBySnapshotIdOrderByEffectiveFromDesc(String snapshotId);
+
+    /** Lookup by the business request number; underpins idempotent override creation. */
+    Optional<ManualOverride> findByRequestId(String requestId);
 }

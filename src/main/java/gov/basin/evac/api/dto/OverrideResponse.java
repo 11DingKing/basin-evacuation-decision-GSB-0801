@@ -14,11 +14,12 @@ public record OverrideResponse(
         String reason,
         Instant effectiveFrom,
         Instant expiresAt,
-        Instant createdAt) {
+        Instant createdAt,
+        String requestId) {
 
     public static OverrideResponse from(ManualOverride o) {
         return new OverrideResponse(o.getId(), o.getSnapshotId(), o.getRegionCode(),
                 o.getForcedLevel().name(), o.getOperator(), o.getReason(),
-                o.getEffectiveFrom(), o.getExpiresAt(), o.getCreatedAt());
+                o.getEffectiveFrom(), o.getExpiresAt(), o.getCreatedAt(), o.getRequestId());
     }
 }
