@@ -53,13 +53,17 @@ public class DecisionAdvice {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "request_id", length = 64, updatable = false)
+    private String requestId;
+
     protected DecisionAdvice() {
     }
 
     public DecisionAdvice(String snapshotId, String regionCode,
                           DecisionLevel decisionLevel, AdviceSource source,
                           String adviceText, Map<String, Object> evidenceRef,
-                          Long overrideId, Instant computedAt, Instant createdAt) {
+                          Long overrideId, Instant computedAt, Instant createdAt,
+                          String requestId) {
         this.snapshotId = snapshotId;
         this.regionCode = regionCode;
         this.decisionLevel = decisionLevel;
@@ -69,6 +73,7 @@ public class DecisionAdvice {
         this.overrideId = overrideId;
         this.computedAt = computedAt;
         this.createdAt = createdAt;
+        this.requestId = requestId;
     }
 
     public Long getId() { return id; }
@@ -81,4 +86,5 @@ public class DecisionAdvice {
     public Long getOverrideId() { return overrideId; }
     public Instant getComputedAt() { return computedAt; }
     public Instant getCreatedAt() { return createdAt; }
+    public String getRequestId() { return requestId; }
 }

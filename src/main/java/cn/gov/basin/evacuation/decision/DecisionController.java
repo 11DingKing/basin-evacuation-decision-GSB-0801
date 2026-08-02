@@ -63,10 +63,11 @@ public class DecisionController {
             String adviceText,
             Map<String, Object> evidenceRef,
             Long overrideId,
+            String requestId,
             Instant computedAt,
             Instant createdAt
     ) {
-        static AdviceDto from(DecisionAdvice a) {
+        public static AdviceDto from(DecisionAdvice a) {
             return new AdviceDto(
                     a.getId(),
                     a.getSnapshotId(),
@@ -76,6 +77,7 @@ public class DecisionController {
                     a.getAdviceText(),
                     a.getEvidenceRef(),
                     a.getOverrideId(),
+                    a.getRequestId(),
                     a.getComputedAt(),
                     a.getCreatedAt()
             );

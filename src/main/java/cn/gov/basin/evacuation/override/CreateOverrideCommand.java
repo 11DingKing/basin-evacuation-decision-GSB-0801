@@ -12,6 +12,8 @@ public record CreateOverrideCommand(
         @NotBlank String reason,
         @NotNull DecisionLevel targetLevel,
         @NotNull Instant effectiveFrom,
-        @NotNull Instant expiresAt
+        @NotNull Instant expiresAt,
+        String snapshotId,
+        String requestId
 ) {
 }

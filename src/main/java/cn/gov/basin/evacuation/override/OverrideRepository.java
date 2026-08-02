@@ -32,4 +32,6 @@ public interface OverrideRepository extends JpaRepository<ManualOverride, Long> 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from ManualOverride o where o.id = :id")
     Optional<ManualOverride> lockById(@Param("id") Long id);
+
+    Optional<ManualOverride> findByRequestId(String requestId);
 }

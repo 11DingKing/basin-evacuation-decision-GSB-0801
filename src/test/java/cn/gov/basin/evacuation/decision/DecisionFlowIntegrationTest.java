@@ -72,7 +72,7 @@ class DecisionFlowIntegrationTest extends AbstractIntegrationTest {
 
         overrideService.create(new CreateOverrideCommand(
                 "510182", "duty-zhao", "上游堰塞湖险情，需立即转移",
-                DecisionLevel.LEVEL_4, effective, expires));
+                DecisionLevel.LEVEL_4, effective, expires, null, null));
 
         setClock(t0);
         DecisionAdvice before = decisionService.computeForSnapshot(INITIAL_SNAPSHOT);
@@ -157,7 +157,8 @@ class DecisionFlowIntegrationTest extends AbstractIntegrationTest {
                 "510182", "tester", "x",
                 DecisionLevel.LEVEL_2,
                 Instant.parse("2026-07-29T03:00:00Z"),
-                Instant.parse("2026-07-29T04:00:00Z")));
+                Instant.parse("2026-07-29T04:00:00Z"),
+                null, null));
         try {
             jdbc.update("delete from manual_overrides where id = ?", created.getId());
             assertThat(false).as("deleting override should have failed").isTrue();

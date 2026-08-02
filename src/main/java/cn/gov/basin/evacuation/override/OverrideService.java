@@ -33,6 +33,11 @@ public class OverrideService {
         if (!cmd.expiresAt().isAfter(cmd.effectiveFrom())) {
             throw new IllegalArgumentException("expiresAt must be after effectiveFrom");
         }
+        if (cmd.requestId() != null && !cmd.requestId().isBlank()) {
+            repository.findByRequestId(cmd.requestId()).ifPresent(existing -> {
+                throw new DuplicateRequestIdException(cmd.requestId(), existing.getId());
+            });
+        }
         regionService.get(cmd.regionCode());
         Instant now = clock.instant();
         ManualOverride override = new ManualOverride(
@@ -43,9 +48,22 @@ public class OverrideService {
                 OverrideStatus.ACTIVE,
                 cmd.effectiveFrom(),
                 cmd.expiresAt(),
-                now
+                now,
+                cmd.requestId(),
+                cmd.snapshotId()
         );
         return repository.save(override);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<ManualOverride> findByRequestId(String requestId) {
+        return repository.findByRequestId(requestId);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW,
+            readOnly = true)
+    public java.util.Optional<ManualOverride> findByRequestIdInNewTx(String requestId) {
+        return repository.findByRequestId(requestId);
     }
 
     @Transactional

@@ -58,6 +58,9 @@ public class NotificationOutbox {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "request_id", length = 64, updatable = false)
+    private String requestId;
+
     @Version
     private Long version;
 
@@ -65,7 +68,8 @@ public class NotificationOutbox {
     }
 
     public NotificationOutbox(Long adviceId, String regionCode, String channel,
-                               Map<String, Object> payload, Instant now) {
+                               Map<String, Object> payload, Instant now,
+                               String requestId) {
         this.adviceId = adviceId;
         this.regionCode = regionCode;
         this.channel = channel;
@@ -75,6 +79,7 @@ public class NotificationOutbox {
         this.createdAt = now;
         this.updatedAt = now;
         this.nextRetryAt = now;
+        this.requestId = requestId;
     }
 
     public void markSent(Instant now) {
@@ -112,4 +117,5 @@ public class NotificationOutbox {
     public Instant getSentAt() { return sentAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public String getRequestId() { return requestId; }
 }

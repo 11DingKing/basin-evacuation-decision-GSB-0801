@@ -1,6 +1,5 @@
 package cn.gov.basin.evacuation.decision;
 
-import cn.gov.basin.evacuation.domain.decision.DecisionLevel;
 import cn.gov.basin.evacuation.domain.threshold.EvaluationResult;
 import cn.gov.basin.evacuation.domain.threshold.ThresholdEvaluationService;
 import cn.gov.basin.evacuation.notification.NotificationPort;
@@ -47,13 +46,18 @@ public class DecisionService {
 
     @Transactional
     public DecisionAdvice computeForSnapshot(String snapshotId) {
+        return computeForSnapshot(snapshotId, null);
+    }
+
+    @Transactional
+    public DecisionAdvice computeForSnapshot(String snapshotId, String requestId) {
         lockRepository.acquireSnapshotLock(snapshotId);
 
         RiskSnapshot snapshot = snapshotService.get(snapshotId);
         EvaluationResult evaluation = thresholdService.evaluate(snapshot);
 
         AdviceSource source = AdviceSource.COMPUTED;
-        DecisionLevel finalLevel = evaluation.level();
+        cn.gov.basin.evacuation.domain.decision.DecisionLevel finalLevel = evaluation.level();
         Long overrideId = null;
         String message = evaluation.message();
 
@@ -71,7 +75,7 @@ public class DecisionService {
         }
 
         Instant now = clock.instant();
-        Map<String, Object> evidence = buildEvidence(evaluation, source, overrideId);
+        Map<String, Object> evidence = buildEvidence(evaluation, source, overrideId, requestId);
         DecisionAdvice advice = new DecisionAdvice(
                 snapshot.getSnapshotId(),
                 snapshot.getRegionCode(),
@@ -81,12 +85,13 @@ public class DecisionService {
                 evidence,
                 overrideId,
                 now,
-                now
+                now,
+                requestId
         );
         DecisionAdvice saved = adviceRepository.save(advice);
 
-        Map<String, Object> payload = buildNotificationPayload(saved, evaluation, snapshot);
-        notificationPort.enqueue(saved, payload);
+        Map<String, Object> payload = buildNotificationPayload(saved, evaluation, snapshot, requestId);
+        notificationPort.enqueue(saved, payload, requestId);
 
         return saved;
     }
@@ -103,7 +108,17 @@ public class DecisionService {
     }
 
     @Transactional(readOnly = true)
-    public Page<DecisionAdvice> search(String regionCode, DecisionLevel level, int page, int size) {
+    public Optional<DecisionAdvice> findLatestForSnapshotAndRequest(String snapshotId, String requestId) {
+        if (requestId == null) {
+            return Optional.empty();
+        }
+        return adviceRepository.findFirstBySnapshotIdAndRequestIdOrderByComputedAtDesc(snapshotId, requestId);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<DecisionAdvice> search(String regionCode,
+                                       cn.gov.basin.evacuation.domain.decision.DecisionLevel level,
+                                       int page, int size) {
         PageRequest pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 200));
         if (regionCode != null && !regionCode.isBlank() && level != null) {
             return adviceRepository.findByRegionAndLevel(regionCode, level, pageable);
@@ -116,7 +131,8 @@ public class DecisionService {
 
     private Map<String, Object> buildEvidence(EvaluationResult evaluation,
                                               AdviceSource source,
-                                              Long overrideId) {
+                                              Long overrideId,
+                                              String requestId) {
         Map<String, Object> evidence = new LinkedHashMap<>();
         evidence.putAll(EvidenceRefMapper.toMap(evaluation.evidenceRef()));
         evidence.put("triggeredRules", evaluation.triggeredRules());
@@ -125,14 +141,19 @@ public class DecisionService {
         if (overrideId != null) {
             evidence.put("overrideId", overrideId);
         }
+        if (requestId != null) {
+            evidence.put("requestId", requestId);
+        }
         return evidence;
     }
 
     private Map<String, Object> buildNotificationPayload(DecisionAdvice advice,
                                                         EvaluationResult evaluation,
-                                                        RiskSnapshot snapshot) {
+                                                        RiskSnapshot snapshot,
+                                                        String requestId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("snapshotId", advice.getSnapshotId());
+        payload.put("adviceId", advice.getId());
         payload.put("regionCode", advice.getRegionCode());
         payload.put("decisionLevel", advice.getDecisionLevel().name());
         payload.put("source", advice.getSource().name());
@@ -141,6 +162,7 @@ public class DecisionService {
         payload.put("populationUnit", "PERSON");
         payload.put("triggeredRules", evaluation.triggeredRules());
         payload.put("missingEvidence", evaluation.missingEvidence());
+        payload.put("requestId", requestId);
         payload.put("evidenceVersions", Map.of(
                 "rainfall", snapshot.getRainfallVersion(),
                 "waterLevel", snapshot.getWaterLevelVersion(),

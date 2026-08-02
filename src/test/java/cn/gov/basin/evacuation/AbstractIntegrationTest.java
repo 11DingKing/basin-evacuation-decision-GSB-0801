@@ -39,14 +39,19 @@ public abstract class AbstractIntegrationTest {
                     primary_road_status, secondary_road_status, vulnerable_population,
                     rainfall_health, water_level_health, hazard_health, infrastructure_health,
                     rainfall_version, water_level_version, hazard_version, infrastructure_version
-                ) VALUES (
-                    'sc-510182-20260729T0300','510182','2026-07-29T03:00:00Z',
-                    118.00, 6.12, 'WARNING',
-                    'CLOSED','UNKNOWN',286,
-                    'OK','OK','OK','OK',
-                    'rain-v20260729.0300','wl-v20260729.0300',
-                    'haz-v20260729.0300','infra-v20260729.0300'
-                )
+                ) VALUES
+                    ('sc-510182-20260729T0300','510182','2026-07-29T03:00:00Z',
+                     118.00, 6.12, 'WARNING',
+                     'CLOSED','UNKNOWN',286,
+                     'OK','OK','OK','OK',
+                     'rain-v20260729.0300','wl-v20260729.0300',
+                     'haz-v20260729.0300','infra-v20260729.0300'),
+                    ('sc-510182-20260729T0600','510182','2026-07-29T06:00:00Z',
+                     164.00, 6.18, 'WARNING',
+                     'OPEN','UNKNOWN',286,
+                     'OK','OK','OK','OK',
+                     'rain-20260729T0600','wl-20260729T0600',
+                     'haz-20260729T0600','infra-20260729T0600')
                 """);
         setClock(Instant.parse("2026-07-29T03:05:00Z"));
     }

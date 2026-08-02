@@ -46,12 +46,19 @@ public class ManualOverride {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "request_id", length = 64, updatable = false)
+    private String requestId;
+
+    @Column(name = "snapshot_id", length = 64, updatable = false)
+    private String snapshotId;
+
     protected ManualOverride() {
     }
 
     public ManualOverride(String regionCode, String operator, String reason,
                           DecisionLevel targetLevel, OverrideStatus status,
-                          Instant effectiveFrom, Instant expiresAt, Instant createdAt) {
+                          Instant effectiveFrom, Instant expiresAt, Instant createdAt,
+                          String requestId, String snapshotId) {
         this.regionCode = regionCode;
         this.operator = operator;
         this.reason = reason;
@@ -60,6 +67,8 @@ public class ManualOverride {
         this.effectiveFrom = effectiveFrom;
         this.expiresAt = expiresAt;
         this.createdAt = createdAt;
+        this.requestId = requestId;
+        this.snapshotId = snapshotId;
     }
 
     public Long getId() { return id; }
@@ -71,6 +80,8 @@ public class ManualOverride {
     public Instant getEffectiveFrom() { return effectiveFrom; }
     public Instant getExpiresAt() { return expiresAt; }
     public Instant getCreatedAt() { return createdAt; }
+    public String getRequestId() { return requestId; }
+    public String getSnapshotId() { return snapshotId; }
 
     public void markExpired() {
         this.status = OverrideStatus.EXPIRED;

@@ -6,5 +6,5 @@ import java.util.Map;
 
 public interface NotificationPort {
 
-    void enqueue(DecisionAdvice advice, Map<String, Object> payload);
+    void enqueue(DecisionAdvice advice, Map<String, Object> payload, String requestId);
 }

@@ -1,6 +1,7 @@
 package cn.gov.basin.evacuation.config;
 
 import cn.gov.basin.evacuation.decision.AdviceNotFoundException;
+import cn.gov.basin.evacuation.override.DuplicateRequestIdException;
 import cn.gov.basin.evacuation.override.OverrideNotFoundException;
 import cn.gov.basin.evacuation.region.RegionNotFoundException;
 import cn.gov.basin.evacuation.snapshot.SnapshotAlreadyExistsException;
@@ -36,6 +37,13 @@ public class GlobalExceptionHandler {
     })
     public ResponseEntity<Map<String, Object>> conflict(RuntimeException ex) {
         return build(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateRequestIdException.class)
+    public ResponseEntity<Map<String, Object>> duplicateRequest(DuplicateRequestIdException ex) {
+        Map<String, Object> body = baseBody(HttpStatus.CONFLICT, ex.getMessage());
+        body.put("existingOverrideId", ex.getExistingOverrideId());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

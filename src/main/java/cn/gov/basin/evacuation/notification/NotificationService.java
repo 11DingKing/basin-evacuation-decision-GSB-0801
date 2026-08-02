@@ -41,13 +41,14 @@ public class NotificationService implements NotificationPort {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void enqueue(DecisionAdvice advice, Map<String, Object> payload) {
+    public void enqueue(DecisionAdvice advice, Map<String, Object> payload, String requestId) {
         NotificationOutbox outbox = new NotificationOutbox(
                 advice.getId(),
                 advice.getRegionCode(),
                 "DEFAULT",
                 payload,
-                clock.instant()
+                clock.instant(),
+                requestId
         );
         outboxRepository.save(outbox);
     }

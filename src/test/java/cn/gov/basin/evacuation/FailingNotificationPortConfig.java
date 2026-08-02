@@ -24,11 +24,11 @@ public class FailingNotificationPortConfig {
         }
 
         @Override
-        public void enqueue(DecisionAdvice advice, Map<String, Object> payload) {
+        public void enqueue(DecisionAdvice advice, Map<String, Object> payload, String requestId) {
             if (FAIL_NEXT_ENQUEUE.get()) {
                 throw new IllegalStateException("simulated enqueue failure for atomicity test");
             }
-            delegate.enqueue(advice, payload);
+            delegate.enqueue(advice, payload, requestId);
         }
     }
 

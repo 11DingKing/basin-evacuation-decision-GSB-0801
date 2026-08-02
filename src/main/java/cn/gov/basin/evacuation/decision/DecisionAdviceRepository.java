@@ -13,6 +13,9 @@ public interface DecisionAdviceRepository extends JpaRepository<DecisionAdvice, 
 
     Optional<DecisionAdvice> findFirstBySnapshotIdOrderByComputedAtDesc(String snapshotId);
 
+    Optional<DecisionAdvice> findFirstBySnapshotIdAndRequestIdOrderByComputedAtDesc(
+            String snapshotId, String requestId);
+
     Page<DecisionAdvice> findByRegionCodeOrderByComputedAtDesc(String regionCode, Pageable pageable);
 
     @Query("select a from DecisionAdvice a where a.regionCode = :region "
