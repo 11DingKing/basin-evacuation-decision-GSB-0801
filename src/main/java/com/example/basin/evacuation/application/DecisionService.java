@@ -10,6 +10,7 @@ import com.example.basin.evacuation.domain.snapshot.RiskSnapshot;
 import com.example.basin.evacuation.domain.snapshot.SnapshotRepository;
 import com.example.basin.evacuation.domain.threshold.ThresholdEvaluationService;
 import com.example.basin.evacuation.domain.threshold.ThresholdResult;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -27,15 +28,20 @@ import java.util.Optional;
  * (transactional outbox). Controllers call this service; they never encode
  * decision rules.
  *
+ * <p>Expiry semantics: an override is active only while {@code expiresAt > now}.
+ * Therefore at exactly {@code now == expiresAt} it is already expired
+ * ({@code now >= expiresAt}), and the computed level is restored.
+ *
  * <p>Concurrency: recompute locks the immutable snapshot row with
  * {@code SELECT ... FOR UPDATE}, which serializes concurrent recomputations of
  * the SAME snapshot without blocking different snapshots. The unique
- * {@code (snapshot_id, sequence_no)} constraint is a final backstop.
+ * {@code (snapshot_id, sequence_no)} and {@code request_no} constraints are
+ * final backstops.
  *
- * <p>Idempotency: {@link #applyOverride} accepts a business {@code requestNo}.
- * If a decision already references the override created for that request, the
- * existing decision (and its outbox rows) are returned without producing
- * duplicates.
+ * <p>Idempotency: both {@link #applyOverride} and {@link #recompute(String, String)}
+ * accept a business {@code requestNo}. Replaying the same request (including
+ * concurrently) returns the already-persisted decision without producing
+ * duplicate rows or outbox entries.
  *
  * <p>Atomicity: the decision and its outbox rows are inserted in one local
  * transaction, so there is never a half-written state.
@@ -66,10 +72,39 @@ public class DecisionService {
 
     @Transactional
     public Decision recompute(String snapshotId) {
+        return recompute(snapshotId, null);
+    }
+
+    /**
+     * Recompute the decision for a snapshot. When {@code requestNo} is supplied,
+     * the call is idempotent: concurrent retries produce exactly one new decision
+     * and one outbox batch.
+     */
+    @Transactional
+    public Decision recompute(String snapshotId, String requestNo) {
         RiskSnapshot snapshot = snapshotRepository.findForUpdate(snapshotId)
                 .orElseThrow(() -> new IllegalArgumentException("snapshot not found: " + snapshotId));
+
+        if (requestNo != null && !requestNo.isBlank()) {
+            Optional<Decision> existing = decisionRepository.findByRequestNo(requestNo);
+            if (existing.isPresent()) {
+                if (!existing.get().getSnapshotId().equals(snapshotId)) {
+                    throw new IllegalStateException(
+                            "requestNo " + requestNo + " already used by snapshot " + existing.get().getSnapshotId());
+                }
+                return existing.get();
+            }
+        }
+
         ManualOverride activeOverride = overrideService.findActive(snapshotId).orElse(null);
-        return buildAndSave(snapshot, activeOverride);
+        try {
+            return buildAndSave(snapshot, activeOverride, requestNo);
+        } catch (DataIntegrityViolationException ex) {
+            if (requestNo != null && !requestNo.isBlank()) {
+                return decisionRepository.findByRequestNo(requestNo).orElseThrow(() -> ex);
+            }
+            throw ex;
+        }
     }
 
     /**
@@ -96,7 +131,7 @@ public class DecisionService {
             return alreadyApplied.get();
         }
 
-        return buildAndSave(snapshot, override);
+        return buildAndSave(snapshot, override, override.getRequestNo());
     }
 
     @Transactional(readOnly = true)
@@ -128,24 +163,25 @@ public class DecisionService {
         return decisionRepository.findAll(pageable);
     }
 
-    private Decision buildAndSave(RiskSnapshot snapshot, ManualOverride effectiveOverride) {
+    private Decision buildAndSave(RiskSnapshot snapshot,
+                                  ManualOverride effectiveOverride,
+                                  String decisionRequestNo) {
         ThresholdResult result = thresholdService.evaluate(snapshot);
 
         DecisionLevel effectiveLevel;
         Long overrideId = null;
-        String requestNo = null;
         String rationale;
 
         if (effectiveOverride != null) {
             effectiveLevel = effectiveOverride.getTargetLevel();
             overrideId = effectiveOverride.getId();
-            requestNo = effectiveOverride.getRequestNo();
+            String overrideRequestNo = effectiveOverride.getRequestNo();
             rationale = result.rationale()
                     + "；【人工覆写生效】操作者=" + effectiveOverride.getOperator()
                     + "，覆写为=" + effectiveOverride.getTargetLevel().label()
                     + "，理由=" + effectiveOverride.getReason()
                     + "，过期时间=" + effectiveOverride.getExpiresAt()
-                    + (requestNo != null ? "，业务请求号=" + requestNo : "");
+                    + (overrideRequestNo != null ? "，业务请求号=" + overrideRequestNo : "");
         } else {
             effectiveLevel = result.computedLevel();
             rationale = result.rationale();
@@ -160,6 +196,7 @@ public class DecisionService {
                 .level(effectiveLevel)
                 .computedLevel(result.computedLevel())
                 .activeOverrideId(overrideId)
+                .requestNo(decisionRequestNo)
                 .evidenceVersion(snapshot.getEvidenceVersion())
                 .rationale(rationale)
                 .dimensionBreakdown(result.breakdown())
@@ -168,7 +205,7 @@ public class DecisionService {
                 .build();
 
         Decision saved = decisionRepository.save(decision);
-        notificationService.createForDecision(saved, snapshot, requestNo);
+        notificationService.createForDecision(saved, snapshot);
         return saved;
     }
 }

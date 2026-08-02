@@ -36,7 +36,7 @@ class AtomicityIntegrationTest extends AbstractIntegrationTest {
             return new NotificationService(outboxRepository, clock) {
                 @Override
                 public java.util.List<com.example.basin.evacuation.domain.notification.NotificationOutbox>
-                createForDecision(Decision decision, RiskSnapshot snapshot, String requestNo) {
+                createForDecision(Decision decision, RiskSnapshot snapshot) {
                     throw new IllegalStateException("simulated outbox failure after decision save");
                 }
             };

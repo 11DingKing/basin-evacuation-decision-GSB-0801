@@ -48,6 +48,9 @@ public class Decision {
     @Column(name = "active_override_id")
     private Long activeOverrideId;
 
+    @Column(name = "request_no", length = 64)
+    private String requestNo;
+
     @Column(name = "evidence_version", nullable = false, length = 100)
     private String evidenceVersion;
 

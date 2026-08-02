@@ -28,9 +28,7 @@ public class NotificationService {
     }
 
     @Transactional
-    public List<NotificationOutbox> createForDecision(Decision decision,
-                                                      RiskSnapshot snapshot,
-                                                      String requestNo) {
+    public List<NotificationOutbox> createForDecision(Decision decision, RiskSnapshot snapshot) {
         List<NotificationChannel> channels = channelsFor(decision.getLevel());
         NotificationPayload.UpstreamVersions upstreamVersions =
                 NotificationPayload.UpstreamVersions.builder()
@@ -49,7 +47,7 @@ public class NotificationService {
                 .evidenceVersion(decision.getEvidenceVersion())
                 .rationale(decision.getRationale())
                 .recommendedActions(actionsFor(decision.getLevel()))
-                .requestNo(requestNo)
+                .requestNo(decision.getRequestNo())
                 .upstreamVersions(upstreamVersions)
                 .build();
 
