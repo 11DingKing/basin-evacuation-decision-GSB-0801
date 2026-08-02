@@ -23,7 +23,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/overrides")
-@Tag(name = "Overrides", description = "Append-only manual overrides with operator/reason/expiry")
+@Tag(name = "Overrides", description = "Append-only manual overrides with operator/reason/expiry and idempotent request number")
 public class OverrideController {
 
     private final OverrideService overrideService;
@@ -36,11 +36,12 @@ public class OverrideController {
 
     @PostMapping("/snapshots/{snapshotId}")
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Create a manual override for a snapshot; history is never deleted")
+    @Operation(summary = "Create an idempotent manual override for a snapshot; history is never deleted")
     public OverrideResponse create(@PathVariable String snapshotId,
                                    @Valid @RequestBody OverrideRequest request) {
         ManualOverride saved = overrideService.create(
                 snapshotId,
+                request.requestNo(),
                 request.operator(),
                 request.reason(),
                 request.targetLevel(),
@@ -49,16 +50,16 @@ public class OverrideController {
     }
 
     @PostMapping("/snapshots/{snapshotId}/apply")
-    @Operation(summary = "Create an override and immediately recompute the decision (convenience)")
+    @Operation(summary = "Create an idempotent override and recompute; replaying the same requestNo returns the same decision")
     public DecisionResponse createAndRecompute(@PathVariable String snapshotId,
                                                @Valid @RequestBody OverrideRequest request) {
-        overrideService.create(
+        return DecisionResponse.from(decisionService.applyOverride(
                 snapshotId,
+                request.requestNo(),
                 request.operator(),
                 request.reason(),
                 request.targetLevel(),
-                request.expiresAt());
-        return DecisionResponse.from(decisionService.recompute(snapshotId));
+                request.expiresAt()));
     }
 
     @GetMapping(params = "snapshotId")

@@ -28,8 +28,17 @@ public class NotificationService {
     }
 
     @Transactional
-    public List<NotificationOutbox> createForDecision(Decision decision, RiskSnapshot snapshot) {
+    public List<NotificationOutbox> createForDecision(Decision decision,
+                                                      RiskSnapshot snapshot,
+                                                      String requestNo) {
         List<NotificationChannel> channels = channelsFor(decision.getLevel());
+        NotificationPayload.UpstreamVersions upstreamVersions =
+                NotificationPayload.UpstreamVersions.builder()
+                        .rainfall(snapshot.getRainfallVersion())
+                        .waterLevel(snapshot.getWaterLevelVersion())
+                        .hazard(snapshot.getHazardVersion())
+                        .road(snapshot.getRoadVersion())
+                        .build();
         NotificationPayload payload = NotificationPayload.builder()
                 .snapshotId(decision.getSnapshotId())
                 .districtCode(decision.getDistrictCode())
@@ -40,6 +49,8 @@ public class NotificationService {
                 .evidenceVersion(decision.getEvidenceVersion())
                 .rationale(decision.getRationale())
                 .recommendedActions(actionsFor(decision.getLevel()))
+                .requestNo(requestNo)
+                .upstreamVersions(upstreamVersions)
                 .build();
 
         List<NotificationOutbox> created = new ArrayList<>();

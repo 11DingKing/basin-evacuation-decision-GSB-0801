@@ -14,6 +14,8 @@ public interface DecisionRepository extends JpaRepository<Decision, Long> {
 
     Optional<Decision> findFirstBySnapshotIdOrderBySequenceNoDesc(String snapshotId);
 
+    Optional<Decision> findFirstByActiveOverrideId(Long activeOverrideId);
+
     List<Decision> findBySnapshotIdOrderBySequenceNoDesc(String snapshotId);
 
     Page<Decision> findByDistrictCodeOrderByCreatedAtDesc(String districtCode, Pageable pageable);

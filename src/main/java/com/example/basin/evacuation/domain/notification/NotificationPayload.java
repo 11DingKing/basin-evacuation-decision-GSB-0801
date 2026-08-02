@@ -15,6 +15,16 @@ public record NotificationPayload(
         long vulnerablePopulation,
         String evidenceVersion,
         String rationale,
-        List<String> recommendedActions
+        List<String> recommendedActions,
+        String requestNo,
+        UpstreamVersions upstreamVersions
 ) {
+    @Builder
+    public record UpstreamVersions(
+            String rainfall,
+            String waterLevel,
+            String hazard,
+            String road
+    ) {
+    }
 }

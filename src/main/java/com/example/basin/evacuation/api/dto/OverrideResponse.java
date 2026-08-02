@@ -8,6 +8,7 @@ import java.time.Instant;
 public record OverrideResponse(
         Long id,
         String snapshotId,
+        String requestNo,
         String operator,
         String reason,
         DecisionLevel targetLevel,
@@ -18,6 +19,7 @@ public record OverrideResponse(
         return new OverrideResponse(
                 o.getId(),
                 o.getSnapshotId(),
+                o.getRequestNo(),
                 o.getOperator(),
                 o.getReason(),
                 o.getTargetLevel(),

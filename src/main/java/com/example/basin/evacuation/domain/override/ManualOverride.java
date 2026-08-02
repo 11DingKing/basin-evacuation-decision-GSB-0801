@@ -42,6 +42,9 @@ public class ManualOverride {
     @Column(name = "target_level", nullable = false, length = 30)
     private DecisionLevel targetLevel;
 
+    @Column(name = "request_no", length = 64)
+    private String requestNo;
+
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 

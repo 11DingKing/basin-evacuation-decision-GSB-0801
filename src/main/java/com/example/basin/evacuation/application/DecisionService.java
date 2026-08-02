@@ -23,13 +23,19 @@ import java.util.Optional;
 /**
  * Application service that orchestrates the three independent domain modules:
  * {@link ThresholdEvaluationService} (computed level), {@link OverrideService}
- * (manual override / expiry) and {@link NotificationService} (transactional
- * outbox). Controllers call this service; they never encode decision rules.
+ * (manual override / expiry / idempotency) and {@link NotificationService}
+ * (transactional outbox). Controllers call this service; they never encode
+ * decision rules.
  *
  * <p>Concurrency: recompute locks the immutable snapshot row with
  * {@code SELECT ... FOR UPDATE}, which serializes concurrent recomputations of
  * the SAME snapshot without blocking different snapshots. The unique
  * {@code (snapshot_id, sequence_no)} constraint is a final backstop.
+ *
+ * <p>Idempotency: {@link #applyOverride} accepts a business {@code requestNo}.
+ * If a decision already references the override created for that request, the
+ * existing decision (and its outbox rows) are returned without producing
+ * duplicates.
  *
  * <p>Atomicity: the decision and its outbox rows are inserted in one local
  * transaction, so there is never a half-written state.
@@ -62,46 +68,35 @@ public class DecisionService {
     public Decision recompute(String snapshotId) {
         RiskSnapshot snapshot = snapshotRepository.findForUpdate(snapshotId)
                 .orElseThrow(() -> new IllegalArgumentException("snapshot not found: " + snapshotId));
-
-        ThresholdResult result = thresholdService.evaluate(snapshot);
-
         ManualOverride activeOverride = overrideService.findActive(snapshotId).orElse(null);
-        DecisionLevel effectiveLevel;
-        Long overrideId = null;
-        String rationale;
+        return buildAndSave(snapshot, activeOverride);
+    }
 
-        if (activeOverride != null) {
-            effectiveLevel = activeOverride.getTargetLevel();
-            overrideId = activeOverride.getId();
-            rationale = result.rationale()
-                    + "；【人工覆写生效】操作者=" + activeOverride.getOperator()
-                    + "，覆写为=" + activeOverride.getTargetLevel().label()
-                    + "，理由=" + activeOverride.getReason()
-                    + "，过期时间=" + activeOverride.getExpiresAt();
-        } else {
-            effectiveLevel = result.computedLevel();
-            rationale = result.rationale();
+    /**
+     * Idempotently apply a manual override and recompute. When the same
+     * {@code requestNo} is replayed (including concurrently), only one override
+     * and one decision with its outbox rows are produced.
+     */
+    @Transactional
+    public Decision applyOverride(String snapshotId,
+                                  String requestNo,
+                                  String operator,
+                                  String reason,
+                                  DecisionLevel targetLevel,
+                                  Instant expiresAt) {
+        RiskSnapshot snapshot = snapshotRepository.findForUpdate(snapshotId)
+                .orElseThrow(() -> new IllegalArgumentException("snapshot not found: " + snapshotId));
+
+        ManualOverride override = overrideService.create(
+                snapshotId, requestNo, operator, reason, targetLevel, expiresAt);
+
+        Optional<Decision> alreadyApplied =
+                decisionRepository.findFirstByActiveOverrideId(override.getId());
+        if (alreadyApplied.isPresent()) {
+            return alreadyApplied.get();
         }
 
-        int sequenceNo = decisionRepository.maxSequenceNoForSnapshot(snapshotId) + 1;
-        Instant now = clock.instant();
-
-        Decision decision = Decision.builder()
-                .snapshotId(snapshot.getSnapshotId())
-                .districtCode(snapshot.getDistrictCode())
-                .level(effectiveLevel)
-                .computedLevel(result.computedLevel())
-                .activeOverrideId(overrideId)
-                .evidenceVersion(snapshot.getEvidenceVersion())
-                .rationale(rationale)
-                .dimensionBreakdown(result.breakdown())
-                .sequenceNo(sequenceNo)
-                .createdAt(now)
-                .build();
-
-        Decision saved = decisionRepository.save(decision);
-        notificationService.createForDecision(saved, snapshot);
-        return saved;
+        return buildAndSave(snapshot, override);
     }
 
     @Transactional(readOnly = true)
@@ -131,5 +126,49 @@ public class DecisionService {
             return decisionRepository.findByLevelOrderByCreatedAtDesc(level, pageable);
         }
         return decisionRepository.findAll(pageable);
+    }
+
+    private Decision buildAndSave(RiskSnapshot snapshot, ManualOverride effectiveOverride) {
+        ThresholdResult result = thresholdService.evaluate(snapshot);
+
+        DecisionLevel effectiveLevel;
+        Long overrideId = null;
+        String requestNo = null;
+        String rationale;
+
+        if (effectiveOverride != null) {
+            effectiveLevel = effectiveOverride.getTargetLevel();
+            overrideId = effectiveOverride.getId();
+            requestNo = effectiveOverride.getRequestNo();
+            rationale = result.rationale()
+                    + "；【人工覆写生效】操作者=" + effectiveOverride.getOperator()
+                    + "，覆写为=" + effectiveOverride.getTargetLevel().label()
+                    + "，理由=" + effectiveOverride.getReason()
+                    + "，过期时间=" + effectiveOverride.getExpiresAt()
+                    + (requestNo != null ? "，业务请求号=" + requestNo : "");
+        } else {
+            effectiveLevel = result.computedLevel();
+            rationale = result.rationale();
+        }
+
+        int sequenceNo = decisionRepository.maxSequenceNoForSnapshot(snapshot.getSnapshotId()) + 1;
+        Instant now = clock.instant();
+
+        Decision decision = Decision.builder()
+                .snapshotId(snapshot.getSnapshotId())
+                .districtCode(snapshot.getDistrictCode())
+                .level(effectiveLevel)
+                .computedLevel(result.computedLevel())
+                .activeOverrideId(overrideId)
+                .evidenceVersion(snapshot.getEvidenceVersion())
+                .rationale(rationale)
+                .dimensionBreakdown(result.breakdown())
+                .sequenceNo(sequenceNo)
+                .createdAt(now)
+                .build();
+
+        Decision saved = decisionRepository.save(decision);
+        notificationService.createForDecision(saved, snapshot, requestNo);
+        return saved;
     }
 }

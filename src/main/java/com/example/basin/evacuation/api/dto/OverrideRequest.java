@@ -7,9 +7,10 @@ import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 
 public record OverrideRequest(
+        String requestNo,
         @NotBlank String operator,
         @NotBlank String reason,
         @NotNull DecisionLevel targetLevel,
-        @NotNull Instant expiresAt
+        Instant expiresAt
 ) {
 }

@@ -10,6 +10,8 @@ import java.util.Optional;
 
 public interface OverrideRepository extends JpaRepository<ManualOverride, Long> {
 
+    Optional<ManualOverride> findByRequestNo(String requestNo);
+
     @Query("""
             select o from ManualOverride o
             where o.snapshotId = :snapshotId

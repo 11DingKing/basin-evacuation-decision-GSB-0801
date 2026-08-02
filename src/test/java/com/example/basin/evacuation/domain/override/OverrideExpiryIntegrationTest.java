@@ -31,7 +31,7 @@ class OverrideExpiryIntegrationTest extends AbstractIntegrationTest {
         Instant t0 = clock.instant();
         Instant expiresAt = t0.plus(Duration.ofHours(1));
 
-        overrideService.create(SNAPSHOT, "值班长-张三", "上游泥石流风险加剧，提前转移",
+        overrideService.create(SNAPSHOT, null, "值班长-张三", "上游泥石流风险加剧，提前转移",
                 DecisionLevel.RED, expiresAt);
 
         Decision before = decisionService.recompute(SNAPSHOT);
