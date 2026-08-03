@@ -195,4 +195,105 @@ class IdempotentOverrideIntegrationTest extends AbstractIntegrationTest {
                 .anyMatch(a -> a.getSource() == AdviceSource.OVERRIDDEN)
                 .anyMatch(a -> a.getSource() == AdviceSource.COMPUTED);
     }
+
+    @Test
+    @DisplayName("override-17 恰好到期时，并发 8 次以 recompute-expiry-17 重算，只产生一个 COMPUTED 和一个 outbox；新快照建议与历史不变")
+    void concurrentRecomputeAtExactExpiryIsIdempotent() throws Exception {
+        Instant t0 = clockNow();
+        CreateOverrideCommand override17 = new CreateOverrideCommand(
+                "510182", "duty-zhao", "堰塞湖险情，旧快照维持转移",
+                DecisionLevel.LEVEL_4,
+                t0,
+                t0.plusSeconds(1800),
+                OLD_SNAPSHOT,
+                "override-17"
+        );
+        OverrideApplicationResult applied = applicationService.apply(override17);
+        DecisionAdvice overridden = applied.advice();
+        assertThat(overridden.getSource()).isEqualTo(AdviceSource.OVERRIDDEN);
+
+        DecisionAdvice newSnapshotBefore = decisionService.computeForSnapshot(NEW_SNAPSHOT);
+        Long newAdviceIdBefore = newSnapshotBefore.getId();
+        long outboxForOverride17Before = outboxRepository.findAll().stream()
+                .filter(o -> "override-17".equals(o.getRequestId()))
+                .count();
+
+        Instant expiry = t0.plusSeconds(1800);
+        setClock(expiry);
+        overrideService.expireDueOverrides();
+
+        long advicesBefore = adviceRepository.count();
+        long outboxBefore = outboxRepository.count();
+
+        int threads = 8;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        AtomicInteger errors = new AtomicInteger();
+        List<Long> producedIds = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+        for (int i = 0; i < threads; i++) {
+            pool.submit(() -> {
+                try {
+                    start.await();
+                    DecisionAdvice a = decisionService.computeForSnapshot(
+                            OLD_SNAPSHOT, "recompute-expiry-17");
+                    producedIds.add(a.getId());
+                    assertThat(a.getSource()).isEqualTo(AdviceSource.COMPUTED);
+                    assertThat(a.getRequestId()).isEqualTo("recompute-expiry-17");
+                } catch (Exception e) {
+                    errors.incrementAndGet();
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+        pool.shutdown();
+
+        assertThat(errors.get()).isZero();
+        assertThat(producedIds).hasSize(8);
+        assertThat(producedIds.stream().distinct()).hasSize(1);
+
+        assertThat(adviceRepository.count()).isEqualTo(advicesBefore + 1);
+        assertThat(outboxRepository.count()).isEqualTo(outboxBefore + 1);
+
+        List<DecisionAdvice> recomputes = adviceRepository.findAll().stream()
+                .filter(a -> "recompute-expiry-17".equals(a.getRequestId()))
+                .toList();
+        assertThat(recomputes).hasSize(1);
+        DecisionAdvice recomputed = recomputes.get(0);
+        assertThat(recomputed.getSource()).isEqualTo(AdviceSource.COMPUTED);
+        assertThat(recomputed.getSnapshotId()).isEqualTo(OLD_SNAPSHOT);
+        assertThat(recomputed.getOverrideId()).isNull();
+
+        List<NotificationOutbox> recomputeOutbox = outboxRepository.findAll().stream()
+                .filter(o -> "recompute-expiry-17".equals(o.getRequestId()))
+                .toList();
+        assertThat(recomputeOutbox).hasSize(1);
+        assertThat(recomputeOutbox.get(0).getAdviceId()).isEqualTo(recomputed.getId());
+
+        var newSnapshotAfter = adviceRepository
+                .findFirstBySnapshotIdOrderByComputedAtDesc(NEW_SNAPSHOT).orElseThrow();
+        assertThat(newSnapshotAfter.getId())
+                .as("并发重算旧快照不得改变新快照的当前建议")
+                .isEqualTo(newAdviceIdBefore);
+        assertThat(newSnapshotAfter.getSnapshotId()).isEqualTo(NEW_SNAPSHOT);
+
+        var overrideRow = overrideRepository.findByRequestId("override-17").orElseThrow();
+        assertThat(overrideRow.getStatus()).isEqualTo(OverrideStatus.EXPIRED);
+        assertThat(overrideRepository.count()).isEqualTo(1);
+
+        long outboxForOverride17After = outboxRepository.findAll().stream()
+                .filter(o -> "override-17".equals(o.getRequestId()))
+                .count();
+        assertThat(outboxForOverride17After).isEqualTo(outboxForOverride17Before);
+
+        assertThat(adviceRepository.findAll())
+                .anyMatch(a -> AdviceSource.OVERRIDDEN.equals(a.getSource())
+                        && "override-17".equals(a.getRequestId()))
+                .anyMatch(a -> AdviceSource.COMPUTED.equals(a.getSource())
+                        && "recompute-expiry-17".equals(a.getRequestId()));
+    }
 }

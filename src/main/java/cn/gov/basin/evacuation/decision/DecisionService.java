@@ -53,6 +53,14 @@ public class DecisionService {
     public DecisionAdvice computeForSnapshot(String snapshotId, String requestId) {
         lockRepository.acquireSnapshotLock(snapshotId);
 
+        if (requestId != null && !requestId.isBlank()) {
+            var existing = adviceRepository
+                    .findFirstBySnapshotIdAndRequestIdOrderByComputedAtDesc(snapshotId, requestId);
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
+
         RiskSnapshot snapshot = snapshotService.get(snapshotId);
         EvaluationResult evaluation = thresholdService.evaluate(snapshot);
 
