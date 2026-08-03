@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: basin-evacuation-decision
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/basin_evac}
+    username: ${DB_USER:basin}
+    password: ${DB_PASSWORD:basin}
+  jpa:
+    hibernate:
+      # NEVER rebuild tables at startup. Schema is owned exclusively by Flyway.
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    locations: classpath:db/migration
+
+server:
+  port: ${SERVER_PORT:8080}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+# Domain threshold configuration. Basin operators tune these without touching code;
+# the threshold module is the single owner of decision rules.
+basin:
+  decision:
+    thresholds:
+      rainfall3h-mm:
+        watch: 50
+        move-prepare: 80
+        move-now: 100
+      river-level-m:
+        watch: 4.0
+        move-prepare: 5.5
+        move-now: 6.0
+    upstream:
+      # A snapshot whose evidence is older than this many minutes for any required feed
+      # is treated as stale => contributes to INSUFFICIENT_DATA rather than LOW.
+      max-evidence-age-minutes: 30
+
+logging:
+  level:
+    org.flywaydb: info
